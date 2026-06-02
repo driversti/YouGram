@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from pydantic_ai.models.test import TestModel
 
-from yougram.agent import ask, build_agent
+from yougram.agent import ask, build_agent, current_time_context
 from yougram.models import Message
 
 
@@ -34,3 +34,12 @@ async def test_ask_runs_agent_and_routes_through_tools_without_real_llm():
     assert isinstance(answer, str)
     assert answer != ""
     assert reader.called  # at least one tool was actually routed to the reader
+
+
+def test_current_time_context_states_the_present_year():
+    now = datetime.now().astimezone()
+    ctx = current_time_context()
+    # The model must be told the real current year (so it stops calling it "the future").
+    assert str(now.year) in ctx
+    assert "UTC" in ctx
+    assert "today" in ctx.lower()

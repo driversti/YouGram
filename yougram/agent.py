@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from pydantic_ai import Agent, Tool
 
 from .telegram_reader import TelegramReader
@@ -12,17 +14,37 @@ Guidelines:
   `list_dialogs` to resolve the name into concrete chats.
 - Use `fetch_messages` for "what was said in chat X" and `search_messages` for
   "did anyone mention Y across these chats".
-- Message dates are UTC. When the user says "today" or "this week", translate to
-  a `since` datetime.
-- Answer concisely. Quote or summarize the actual messages; never invent content.
-- If a tool returns nothing, say so plainly rather than guessing.
+- Telegram message dates are UTC. When the user says "today", "yesterday" or
+  "this week", compute the matching `since` datetime from the current time given
+  below and pass it to the tools — do NOT fetch the whole backlog and summarize
+  it as if it were "today".
+- Answer concisely. Quote or summarize ONLY the actual messages the tools
+  returned; never invent content. If unsure, say what you actually saw.
+- If a tool returns nothing for the requested period, say so plainly.
 """
+
+
+def current_time_context() -> str:
+    """A system-prompt fragment telling the model what 'now' is.
+
+    Without this the model assumes its training cutoff is the present, treats
+    real (recent) message dates as 'the future', and cannot resolve 'today'.
+    """
+    now_local = datetime.now().astimezone()
+    now_utc = now_local.astimezone(timezone.utc)
+    return (
+        f"Current date and time: {now_local:%Y-%m-%d %H:%M %Z} "
+        f"(UTC: {now_utc:%Y-%m-%d %H:%M}). "
+        f"This is the present moment — the year {now_utc:%Y} is NOT the future, "
+        f"and recent messages are current, not an archive. "
+        f"For 'today', use the start of the current local day as `since`."
+    )
 
 
 def build_agent(model: str) -> Agent[Deps, str]:
     """Construct the provider-agnostic agent. `model` is any Pydantic AI model
     string (e.g. 'anthropic:claude-haiku-4-5', 'openai:gpt-4o-mini')."""
-    return Agent(
+    agent = Agent(
         model,
         deps_type=Deps,
         system_prompt=SYSTEM_PROMPT,
@@ -33,6 +55,13 @@ def build_agent(model: str) -> Agent[Deps, str]:
         ],
         defer_model_check=True,
     )
+
+    # Dynamic prompt: re-evaluated on every run so 'now' is always current.
+    @agent.system_prompt
+    def _time_context() -> str:
+        return current_time_context()
+
+    return agent
 
 
 async def ask(agent: Agent[Deps, str], reader: TelegramReader, question: str) -> str:
