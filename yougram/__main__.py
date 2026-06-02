@@ -23,7 +23,11 @@ async def main() -> None:
     register_bot(bot_client, agent, reader, s.allowed_user_id)
 
     print(f"YouGram running. Model={s.llm_model}. Owner={s.allowed_user_id}.")
-    await bot_client.run_until_disconnected()
+    try:
+        await bot_client.run_until_disconnected()
+    finally:
+        await user_client.disconnect()
+        await bot_client.disconnect()
 
 
 if __name__ == "__main__":

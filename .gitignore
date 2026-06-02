@@ -4,6 +4,7 @@
 !.env.example
 *.session
 *.session-journal
+sessions/
 config.local.*
 
 # Python

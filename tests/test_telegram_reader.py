@@ -84,6 +84,20 @@ async def test_search_messages_across_chats():
     assert [m.id for m in out] == [1, 3, 1, 3]
 
 
+async def test_search_messages_stops_at_since():
+    base = datetime(2026, 6, 2, tzinfo=timezone.utc)
+    client = FakeClient(messages=[
+        _msg(3, "alpha newest", base),
+        _msg(2, "alpha older", base - timedelta(days=1)),
+        _msg(1, "alpha oldest", base - timedelta(days=2)),
+    ])
+    reader = TelegramReader(client)
+
+    out = await reader.search_messages("alpha", ["a"], since=base - timedelta(hours=12), limit=10)
+
+    assert [m.id for m in out] == [3]
+
+
 async def test_list_dialogs_filters_by_name_and_kind():
     client = FakeClient(dialogs=[
         _dialog(1, "News Channel", channel=True),

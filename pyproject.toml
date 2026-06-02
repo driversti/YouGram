@@ -7,7 +7,7 @@ dependencies = [
     "telethon>=1.36",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
-    "pydantic-ai>=0.0.14",
+    "pydantic-ai>=1.0",
 ]
 
 [dependency-groups]

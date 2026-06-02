@@ -7,21 +7,30 @@ from yougram.models import Message
 
 
 class FakeReader:
+    def __init__(self):
+        self.called = []
+
     async def fetch_messages(self, chat, since=None, limit=100):
+        self.called.append("fetch_messages")
         return [Message(id=1, date=datetime(2026, 6, 2, tzinfo=timezone.utc), sender="x", text="hi")]
 
     async def search_messages(self, query, chats, since=None, limit=50):
+        self.called.append("search_messages")
         return []
 
     async def list_dialogs(self, query, limit=20):
+        self.called.append("list_dialogs")
         return []
 
 
-async def test_ask_runs_agent_and_calls_tools_without_real_llm():
+async def test_ask_runs_agent_and_routes_through_tools_without_real_llm():
     agent = build_agent("anthropic:claude-haiku-4-5")
-    # TestModel drives the agent without a real provider; it exercises every tool.
+    reader = FakeReader()
+    # TestModel drives the agent without a real provider and calls every
+    # registered tool, so a non-empty answer + recorded tool calls confirm wiring.
     with agent.override(model=TestModel()):
-        answer = await ask(agent, FakeReader(), "what did channel X say today?")
+        answer = await ask(agent, reader, "what did channel X say today?")
 
     assert isinstance(answer, str)
     assert answer != ""
+    assert reader.called  # at least one tool was actually routed to the reader

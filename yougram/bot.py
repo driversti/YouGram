@@ -11,7 +11,11 @@ async def handle_question(event, agent, reader, allowed_user_id: int) -> None:
     """
     if event.sender_id != allowed_user_id:
         return
-    answer = await ask(agent, reader, event.raw_text)
+    try:
+        answer = await ask(agent, reader, event.raw_text)
+    except Exception as exc:  # noqa: BLE001 — surface any failure to the owner
+        await event.reply(f"⚠️ Error: {exc}")
+        return
     await event.reply(answer)
 
 

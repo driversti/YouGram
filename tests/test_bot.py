@@ -32,3 +32,15 @@ async def test_answers_whitelisted_user(monkeypatch):
 
     spy.assert_awaited_once()
     event.reply.assert_awaited_once_with("here is your answer")
+
+
+async def test_replies_with_error_when_ask_fails(monkeypatch):
+    spy = AsyncMock(side_effect=RuntimeError("boom"))
+    monkeypatch.setattr(bot_module, "ask", spy)
+    event = FakeEvent(sender_id=777, text="anything")
+
+    await handle_question(event, agent=object(), reader=object(), allowed_user_id=777)
+
+    event.reply.assert_awaited_once()
+    (sent,), _ = event.reply.call_args
+    assert "boom" in sent
