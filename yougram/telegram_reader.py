@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, tzinfo
 
 from .models import Dialog, Message
 
@@ -8,10 +8,12 @@ class TelegramReader:
 
     Accepts any object exposing the async iterators `iter_messages` and
     `iter_dialogs` (the real `telethon.TelegramClient`, or a fake in tests).
+    `tz` is the timezone a naive `since` is interpreted in (defaults to UTC).
     """
 
-    def __init__(self, client):
+    def __init__(self, client, tz: tzinfo | None = None):
         self._client = client
+        self._tz = tz or timezone.utc
 
     async def fetch_messages(self, chat, since: datetime | None = None, limit: int = 100) -> list[Message]:
         since = self._as_aware(since)
@@ -47,16 +49,15 @@ class TelegramReader:
                     break
         return out
 
-    @staticmethod
-    def _as_aware(since: datetime | None) -> datetime | None:
+    def _as_aware(self, since: datetime | None) -> datetime | None:
         """Make `since` timezone-aware for comparison with Telethon's UTC dates.
 
         The LLM often passes a naive `since` (e.g. start of "today" with no
         tzinfo); a naive vs aware comparison raises TypeError. A naive value is
-        interpreted as the host's local time.
+        interpreted as being in the configured timezone (`self._tz`).
         """
         if since is not None and since.tzinfo is None:
-            return since.astimezone()
+            return since.replace(tzinfo=self._tz)
         return since
 
     @staticmethod

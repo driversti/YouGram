@@ -17,3 +17,6 @@ class Settings(BaseSettings):
 
     llm_model: str = "anthropic:claude-haiku-4-5"
     session_name: str = "yougram"
+
+    # IANA timezone (e.g. "Europe/Warsaw") used to resolve "today"/"this week".
+    timezone: str = "UTC"

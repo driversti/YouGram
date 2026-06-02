@@ -37,9 +37,14 @@ async def test_ask_runs_agent_and_routes_through_tools_without_real_llm():
 
 
 def test_current_time_context_states_the_present_year():
-    now = datetime.now().astimezone()
+    now = datetime.now(timezone.utc)
     ctx = current_time_context()
     # The model must be told the real current year (so it stops calling it "the future").
     assert str(now.year) in ctx
     assert "UTC" in ctx
     assert "today" in ctx.lower()
+
+
+def test_current_time_context_uses_given_timezone():
+    ctx = current_time_context("Europe/Warsaw")
+    assert "Europe/Warsaw" in ctx

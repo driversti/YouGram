@@ -15,3 +15,4 @@ def test_settings_load_from_env(monkeypatch):
     assert s.allowed_user_id == 777
     assert s.llm_model == "anthropic:claude-haiku-4-5"  # default
     assert s.session_name == "yougram"  # default
+    assert s.timezone == "UTC"  # default

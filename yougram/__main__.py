@@ -1,4 +1,5 @@
 import asyncio
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from telethon import TelegramClient
@@ -23,8 +24,8 @@ async def main() -> None:
     await user_client.start()
     await bot_client.start(bot_token=s.bot_token)
 
-    reader = TelegramReader(user_client)
-    agent = build_agent(s.llm_model)
+    reader = TelegramReader(user_client, tz=ZoneInfo(s.timezone))
+    agent = build_agent(s.llm_model, s.timezone)
     register_bot(bot_client, agent, reader, s.allowed_user_id)
 
     print(f"YouGram running. Model={s.llm_model}. Owner={s.allowed_user_id}.")

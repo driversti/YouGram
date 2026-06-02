@@ -71,7 +71,7 @@ async def test_fetch_messages_stops_at_since():
 
 async def test_fetch_messages_handles_naive_since():
     # The LLM may pass a naive `since` (no tzinfo); comparing it against
-    # Telethon's UTC-aware dates must not raise TypeError.
+    # Telethon's UTC-aware dates must not raise TypeError. Default tz is UTC.
     client = FakeClient(messages=[
         _msg(2, "today", datetime(2026, 6, 2, 23, tzinfo=timezone.utc)),
         _msg(1, "old", datetime(2026, 5, 1, tzinfo=timezone.utc)),
@@ -80,9 +80,22 @@ async def test_fetch_messages_handles_naive_since():
 
     out = await reader.fetch_messages("chan", since=datetime(2026, 6, 2, 0, 0), limit=10)
 
-    # Naive midnight "today" -> local-aware; for any real timezone it resolves to
-    # a UTC instant on Jun 1 ~10:00..Jun 2 ~12:00, so the 23:00 msg is kept and
-    # the May msg dropped, regardless of the host's timezone.
+    # Naive midnight -> 2026-06-02 00:00 UTC: the 23:00 msg is kept, May dropped.
+    assert [m.id for m in out] == [2]
+
+
+async def test_fetch_messages_naive_since_uses_configured_tz():
+    from zoneinfo import ZoneInfo
+
+    # Europe/Warsaw is UTC+2 in June, so naive 02:00 -> 00:00 UTC.
+    client = FakeClient(messages=[
+        _msg(2, "after", datetime(2026, 6, 2, 1, tzinfo=timezone.utc)),    # 01:00 UTC >= cutoff
+        _msg(1, "before", datetime(2026, 6, 1, 23, tzinfo=timezone.utc)),  # prev-day 23:00 UTC < cutoff
+    ])
+    reader = TelegramReader(client, tz=ZoneInfo("Europe/Warsaw"))
+
+    out = await reader.fetch_messages("chan", since=datetime(2026, 6, 2, 2, 0), limit=10)
+
     assert [m.id for m in out] == [2]
 
 
