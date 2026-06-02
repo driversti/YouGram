@@ -7,6 +7,7 @@ from telethon import TelegramClient
 from .agent import build_agent
 from .bot import register_bot
 from .config import Settings
+from .context import ConversationContext
 from .telegram_reader import TelegramReader
 
 
@@ -26,7 +27,8 @@ async def main() -> None:
 
     reader = TelegramReader(user_client, tz=ZoneInfo(s.timezone))
     agent = build_agent(s.llm_model, s.timezone)
-    register_bot(bot_client, agent, reader, s.allowed_user_id)
+    context = ConversationContext()
+    register_bot(bot_client, agent, reader, context, s.allowed_user_id)
 
     print(f"YouGram running. Model={s.llm_model}. Owner={s.allowed_user_id}.")
     try:

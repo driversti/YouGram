@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic_ai import RunContext
 
-from .models import Dialog, Message
+from .models import Dialog, Folder, Message
 from .telegram_reader import TelegramReader
 
 
@@ -49,3 +49,20 @@ async def search_messages(
     Use to answer "did anyone mention X" across several channels/groups.
     """
     return await ctx.deps.reader.search_messages(query, chats, since=since, limit=limit)
+
+
+async def list_folders(ctx: RunContext[Deps]) -> list[Folder]:
+    """List the user's Telegram chat folders by name.
+
+    Call this when the user refers to a "folder" so you can then read the chats
+    inside the one they mean.
+    """
+    return await ctx.deps.reader.list_folders()
+
+
+async def chats_in_folder(ctx: RunContext[Deps], name: str) -> list[Dialog]:
+    """List the channels/chats inside the folder whose name best matches `name`.
+
+    Then read each with `fetch_messages` (e.g. to summarize a folder "today").
+    """
+    return await ctx.deps.reader.chats_in_folder(name)

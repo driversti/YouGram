@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from yougram.models import Dialog, Message
-from yougram.tools import Deps, fetch_messages, list_dialogs, search_messages
+from yougram.models import Dialog, Folder, Message
+from yougram.tools import Deps, chats_in_folder, fetch_messages, list_dialogs, list_folders, search_messages
 
 
 @dataclass
@@ -25,6 +25,14 @@ class FakeReader:
     async def list_dialogs(self, query, limit=20):
         self.calls.append(("dialogs", query, limit))
         return [Dialog(id=3, name="News", kind="channel")]
+
+    async def list_folders(self):
+        self.calls.append(("folders",))
+        return [Folder(id=1, title="AI")]
+
+    async def chats_in_folder(self, name, limit=50):
+        self.calls.append(("chats_in_folder", name, limit))
+        return [Dialog(id=9, name="AI News", kind="channel")]
 
 
 def _ctx(reader):
@@ -54,3 +62,17 @@ async def test_list_dialogs_tool_delegates():
     out = await list_dialogs(_ctx(reader), query="news")
     assert out[0].name == "News"
     assert reader.calls == [("dialogs", "news", 20)]
+
+
+async def test_list_folders_tool_delegates():
+    reader = FakeReader()
+    out = await list_folders(_ctx(reader))
+    assert out[0].title == "AI"
+    assert reader.calls == [("folders",)]
+
+
+async def test_chats_in_folder_tool_delegates():
+    reader = FakeReader()
+    out = await chats_in_folder(_ctx(reader), name="ai")
+    assert out[0].name == "AI News"
+    assert reader.calls == [("chats_in_folder", "ai", 50)]

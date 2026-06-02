@@ -20,3 +20,11 @@ def test_dialog_holds_core_fields():
     assert d.id == 42
     assert d.name == "My Channel"
     assert d.kind == "channel"
+
+
+def test_folder_holds_core_fields():
+    from yougram.models import Folder
+
+    f = Folder(id=2, title="AI")
+    assert f.id == 2
+    assert f.title == "AI"

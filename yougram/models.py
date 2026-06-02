@@ -17,3 +17,8 @@ class Dialog(BaseModel):
     id: int
     name: str
     kind: DialogKind
+
+
+class Folder(BaseModel):
+    id: int
+    title: str

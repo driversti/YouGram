@@ -4,15 +4,21 @@ from zoneinfo import ZoneInfo
 from pydantic_ai import Agent, Tool
 
 from .telegram_reader import TelegramReader
-from .tools import Deps, fetch_messages, list_dialogs, search_messages
+from .tools import Deps, chats_in_folder, fetch_messages, list_dialogs, list_folders, search_messages
 
 SYSTEM_PROMPT = """\
 You are YouGram, a personal assistant that answers questions about the user's
 own Telegram account. You have read-only tools to find chats and read messages.
 
 Guidelines:
-- To answer questions about a named channel/group/person, first call
-  `list_dialogs` to resolve the name into concrete chats.
+- To answer questions about a named channel/group/person, call `list_dialogs`
+  (it is fuzzy/typo-tolerant) to resolve the name into concrete chats.
+- For a "folder", call `list_folders` to see folder names, then
+  `chats_in_folder(name)` to get its chats, and read each with `fetch_messages`
+  (e.g. to summarize a folder "today").
+- A message may begin with a "[Current chat context: 'Name' (id=N)]" line set by
+  an earlier forward — treat that chat as the target unless the user names
+  another, and pass that numeric id=N as the `chat` argument to the read tools.
 - Use `fetch_messages` for "what was said in chat X" and `search_messages` for
   "did anyone mention Y across these chats".
 - Telegram message dates are UTC. When the user says "today", "yesterday" or
@@ -56,6 +62,8 @@ def build_agent(model: str, tz: str = "UTC") -> Agent[Deps, str]:
         system_prompt=SYSTEM_PROMPT,
         tools=[
             Tool(list_dialogs, takes_ctx=True),
+            Tool(list_folders, takes_ctx=True),
+            Tool(chats_in_folder, takes_ctx=True),
             Tool(fetch_messages, takes_ctx=True),
             Tool(search_messages, takes_ctx=True),
         ],

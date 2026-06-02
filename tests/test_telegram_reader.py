@@ -14,13 +14,17 @@ def _dialog(id, name, *, channel=False, group=False):
 
 
 class FakeClient:
-    """Mimics the subset of Telethon's async iterators that TelegramReader uses."""
+    """Mimics the subset of Telethon's async API that TelegramReader uses."""
 
-    def __init__(self, *, messages=None, dialogs=None):
+    def __init__(self, *, messages=None, dialogs=None, filters=None, entities=None):
         self._messages = messages or []
         self._dialogs = dialogs or []
+        self._filters = filters or []
+        self._entities = entities or {}
+        self.seen_chats = []
 
     def iter_messages(self, chat, limit=None, search=None):
+        self.seen_chats.append(chat)
         items = self._messages
         if search is not None:
             items = [m for m in items if search.casefold() in (m.message or "").casefold()]
@@ -37,6 +41,13 @@ class FakeClient:
                 yield d
 
         return gen()
+
+    async def __call__(self, request):
+        # Stands in for messages.GetDialogFiltersRequest().
+        return SimpleNamespace(filters=self._filters)
+
+    async def get_entity(self, peer):
+        return self._entities[peer]
 
 
 async def test_fetch_messages_maps_and_skips_empty():
@@ -139,3 +150,108 @@ async def test_list_dialogs_filters_by_name_and_kind():
     out = await reader.list_dialogs("news")
 
     assert [(d.id, d.kind) for d in out] == [(1, "channel"), (3, "channel")]
+
+
+async def test_list_dialogs_fuzzy_matches_typo():
+    client = FakeClient(dialogs=[
+        _dialog(1, "News", channel=True),
+        _dialog(2, "Sports", channel=True),
+    ])
+    reader = TelegramReader(client)
+
+    out = await reader.list_dialogs("newz")  # typo for "news"
+
+    assert [d.id for d in out] == [1]
+
+
+def _folder(id, title, include_peers=()):
+    return SimpleNamespace(id=id, title=title, include_peers=list(include_peers))
+
+
+def _channel_entity(id, title, *, broadcast=True, megagroup=False):
+    return SimpleNamespace(id=id, title=title, broadcast=broadcast, megagroup=megagroup)
+
+
+async def test_list_folders_returns_named_folders_only():
+    client = FakeClient(filters=[
+        SimpleNamespace(),                 # DialogFilterDefault — no title, skipped
+        _folder(1, "AI"),
+        _folder(2, "Friends"),
+    ])
+    reader = TelegramReader(client)
+
+    out = await reader.list_folders()
+
+    assert [(f.id, f.title) for f in out] == [(1, "AI"), (2, "Friends")]
+
+
+async def test_list_folders_normalizes_textwithentities_title():
+    client = FakeClient(filters=[_folder(1, SimpleNamespace(text="AI"))])
+    reader = TelegramReader(client)
+
+    out = await reader.list_folders()
+
+    assert out[0].title == "AI"
+
+
+async def test_chats_in_folder_resolves_member_chats():
+    client = FakeClient(
+        filters=[_folder(1, "AI", include_peers=["p1", "p2"])],
+        entities={
+            "p1": _channel_entity(10, "AI News", broadcast=True),
+            "p2": _channel_entity(11, "AI Chat", broadcast=False, megagroup=True),
+        },
+    )
+    reader = TelegramReader(client)
+
+    out = await reader.chats_in_folder("ai")  # fuzzy / case-insensitive
+
+    assert [(d.id, d.name, d.kind) for d in out] == [
+        (10, "AI News", "channel"),
+        (11, "AI Chat", "group"),
+    ]
+
+
+async def test_chats_in_folder_unknown_returns_empty():
+    client = FakeClient(filters=[_folder(1, "AI")])
+    reader = TelegramReader(client)
+
+    assert await reader.chats_in_folder("nonexistent") == []
+
+
+def test_entity_ref_converts_numeric_strings():
+    assert TelegramReader._entity_ref("123") == 123
+    assert TelegramReader._entity_ref("-100500") == -100500
+    assert TelegramReader._entity_ref("@chan") == "@chan"
+    assert TelegramReader._entity_ref("News") == "News"
+
+
+async def test_resolve_chat_returns_dialog():
+    client = FakeClient(entities={555: _channel_entity(555, "Crypto", broadcast=True)})
+    reader = TelegramReader(client)
+
+    d = await reader.resolve_chat(555)
+
+    assert (d.id, d.name, d.kind) == (555, "Crypto", "channel")
+
+
+async def test_chats_in_folder_skips_inaccessible_peers():
+    # A folder may include a channel the account can't open; skip it, keep the rest.
+    client = FakeClient(
+        filters=[_folder(1, "AI", include_peers=["ok", "bad"])],
+        entities={"ok": _channel_entity(10, "AI News", broadcast=True)},  # "bad" -> KeyError
+    )
+    reader = TelegramReader(client)
+
+    out = await reader.chats_in_folder("ai")
+
+    assert [d.id for d in out] == [10]
+
+
+async def test_search_messages_routes_numeric_ref_to_int():
+    client = FakeClient(messages=[])
+    reader = TelegramReader(client)
+
+    await reader.search_messages("q", ["555"], limit=5)
+
+    assert 555 in client.seen_chats  # "555" was converted to int via _entity_ref

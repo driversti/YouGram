@@ -22,6 +22,14 @@ class FakeReader:
         self.called.append("list_dialogs")
         return []
 
+    async def list_folders(self):
+        self.called.append("list_folders")
+        return []
+
+    async def chats_in_folder(self, name, limit=50):
+        self.called.append("chats_in_folder")
+        return []
+
 
 async def test_ask_runs_agent_and_routes_through_tools_without_real_llm():
     agent = build_agent("anthropic:claude-haiku-4-5")
