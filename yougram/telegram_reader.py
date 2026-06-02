@@ -14,6 +14,7 @@ class TelegramReader:
         self._client = client
 
     async def fetch_messages(self, chat, since: datetime | None = None, limit: int = 100) -> list[Message]:
+        since = self._as_aware(since)
         out: list[Message] = []
         async for m in self._client.iter_messages(chat, limit=limit):
             if since is not None and m.date < since:
@@ -24,6 +25,7 @@ class TelegramReader:
         return out
 
     async def search_messages(self, query: str, chats, since: datetime | None = None, limit: int = 50) -> list[Message]:
+        since = self._as_aware(since)
         out: list[Message] = []
         for chat in chats:
             async for m in self._client.iter_messages(chat, search=query, limit=limit):
@@ -44,6 +46,18 @@ class TelegramReader:
                 if len(out) >= limit:
                     break
         return out
+
+    @staticmethod
+    def _as_aware(since: datetime | None) -> datetime | None:
+        """Make `since` timezone-aware for comparison with Telethon's UTC dates.
+
+        The LLM often passes a naive `since` (e.g. start of "today" with no
+        tzinfo); a naive vs aware comparison raises TypeError. A naive value is
+        interpreted as the host's local time.
+        """
+        if since is not None and since.tzinfo is None:
+            return since.astimezone()
+        return since
 
     @staticmethod
     def _kind(d) -> str:
