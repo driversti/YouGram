@@ -3188,6 +3188,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-ai" },
     { name = "pydantic-settings" },
+    { name = "python-dotenv" },
     { name = "telethon" },
 ]
 
@@ -3202,6 +3203,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-ai", specifier = ">=1.0" },
     { name = "pydantic-settings", specifier = ">=2.3" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "telethon", specifier = ">=1.36" },
 ]
 

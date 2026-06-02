@@ -1,5 +1,6 @@
 import asyncio
 
+from dotenv import load_dotenv
 from telethon import TelegramClient
 
 from .agent import build_agent
@@ -9,6 +10,10 @@ from .telegram_reader import TelegramReader
 
 
 async def main() -> None:
+    # Load .env into the process environment so provider keys (e.g.
+    # ANTHROPIC_API_KEY) reach pydantic-ai. Does not override vars already set
+    # (so Docker's env_file still wins).
+    load_dotenv()
     s = Settings()
 
     user_client = TelegramClient(s.session_name, s.api_id, s.api_hash)

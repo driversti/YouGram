@@ -8,12 +8,14 @@ which is the key to your account — keep it secret (it is gitignored).
 
 import asyncio
 
+from dotenv import load_dotenv
 from telethon import TelegramClient
 
 from yougram.config import Settings
 
 
 async def main() -> None:
+    load_dotenv()  # read .env into the environment before loading Settings
     s = Settings()
     client = TelegramClient(s.session_name, s.api_id, s.api_hash)
     await client.start()  # prompts for phone + code on first run
