@@ -1,0 +1,30 @@
+import asyncio
+
+from telethon import TelegramClient
+
+from .agent import build_agent
+from .bot import register_bot
+from .config import Settings
+from .telegram_reader import TelegramReader
+
+
+async def main() -> None:
+    s = Settings()
+
+    user_client = TelegramClient(s.session_name, s.api_id, s.api_hash)
+    bot_client = TelegramClient(f"{s.session_name}-bot", s.api_id, s.api_hash)
+
+    # The user session must already exist (created via scripts/login.py).
+    await user_client.start()
+    await bot_client.start(bot_token=s.bot_token)
+
+    reader = TelegramReader(user_client)
+    agent = build_agent(s.llm_model)
+    register_bot(bot_client, agent, reader, s.allowed_user_id)
+
+    print(f"YouGram running. Model={s.llm_model}. Owner={s.allowed_user_id}.")
+    await bot_client.run_until_disconnected()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
