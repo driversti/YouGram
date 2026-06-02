@@ -25,6 +25,18 @@ You → Bot → Agent (Claude + tools) → Telethon reads account → Claude ans
 When you ask something, the agent fetches the relevant messages live (on-demand)
 and answers. Nothing is archived to disk.
 
+## Quick start
+
+1. `cp .env.example .env` and fill in the values (see comments in the file).
+2. Create the user session once (interactive, asks for an SMS code):
+   ```bash
+   uv sync
+   uv run python scripts/login.py
+   ```
+   It prints your numeric user id — put it in `YOUGRAM_ALLOWED_USER_ID`.
+3. Run it: `uv run python -m yougram` (or `docker compose up -d`).
+4. DM your bot a question, e.g. "what was posted on @somechannel today?"
+
 ## Status
 
 🚧 Early development. See the design spec in

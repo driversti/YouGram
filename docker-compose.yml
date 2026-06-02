@@ -1,0 +1,12 @@
+services:
+  yougram:
+    build: .
+    image: registry.yurii.live/yougram:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Persist Telethon sessions across restarts; keep them off the image.
+      - ./sessions:/app/sessions
+    environment:
+      # Store .session files under the mounted volume.
+      YOUGRAM_SESSION_NAME: sessions/yougram

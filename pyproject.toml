@@ -1,0 +1,25 @@
+[project]
+name = "yougram"
+version = "0.1.0"
+description = "Ask an LLM about your own Telegram"
+requires-python = ">=3.12"
+dependencies = [
+    "telethon>=1.36",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pydantic-ai>=1.0",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
