@@ -25,8 +25,10 @@ user's real account.
 - **Strategy:** **on-demand** — when asked, the agent fetches fresh messages live
   via Telethon, reads them, answers. No archival/RAG at this stage (YAGNI; add
   later only if context limits become a real problem).
-- **Language/stack:** Python (Telethon + Claude Agent SDK).
-- **LLM:** Claude via Claude Agent SDK.
+- **Language/stack:** Python (Telethon + Pydantic AI).
+- **LLM:** provider-agnostic via **Pydantic AI** — any provider/model that
+  supports tool calling (Anthropic, OpenAI, Gemini, local). Default model:
+  **Claude Haiku**, switchable via config.
 - **Deploy:** dedicated LXC + Docker image via `registry.yurii.live` (same
   pattern as NutritionBot).
 - **Access:** the bot replies only to the user's own `user_id` (whitelist).
@@ -46,7 +48,7 @@ The bot never touches the account session; the account never posts anything.
 User → Bot → Agent (Claude + tools) → Telethon reads account → Claude answers → Bot → User
 ```
 
-## Agent tools (Claude calls as needed)
+## Agent tools (the model calls as needed)
 
 - `list_dialogs(query)` — resolve a channel/group/chat by name/handle.
 - `fetch_messages(chat, since, limit)` — pull messages for a period/limit.
@@ -62,9 +64,11 @@ Example mapping:
 
 - `telegram_reader.py` — Telethon client + session lifecycle.
 - `tools.py` — the three tools above, clean interfaces, no Claude coupling.
-- `agent.py` — Claude Agent SDK setup, tool registration, query loop.
+- `agent.py` — Pydantic AI agent: model config (provider-agnostic), tool
+  registration, query loop.
 - `bot.py` — Bot API handler, whitelist, route question → agent → reply.
-- `config.py` — secrets/config (`API_ID`/`API_HASH`, bot token, Anthropic key).
+- `config.py` — secrets/config (`API_ID`/`API_HASH`, bot token, LLM provider +
+  model + provider API key).
 
 Each module has one purpose and a defined interface so tools can be unit-tested
 without a live account.
@@ -89,7 +93,7 @@ without a live account.
 1. Obtain `API_ID` / `API_HASH` from my.telegram.org.
 2. First interactive login with the SMS code → generates the `.session` file.
 3. Create the interface bot via BotFather → bot token.
-4. Configure Anthropic API key.
+4. Configure the LLM provider, model (default Claude Haiku), and its API key.
 
 ## Out of scope (for now)
 
