@@ -30,10 +30,15 @@ async def main() -> None:
     print(f"YouGram running. Model={s.llm_model}. Owner={s.allowed_user_id}.")
     try:
         await bot_client.run_until_disconnected()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        pass  # Ctrl+C — fall through to a clean disconnect
     finally:
         await user_client.disconnect()
         await bot_client.disconnect()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nYouGram stopped.")
