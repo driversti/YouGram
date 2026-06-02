@@ -1,4 +1,4 @@
-# Telegram Reader Agent — Design
+# YouGram — Design
 
 **Date:** 2026-06-02
 **Status:** Approved
