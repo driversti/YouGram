@@ -182,6 +182,63 @@ async def test_ask_receives_context_and_user_id(monkeypatch):
     assert kwargs["user_id"] == 777
 
 
+async def test_clear_command_wipes_memory(monkeypatch):
+    spy = AsyncMock(return_value="should not run")
+    monkeypatch.setattr(bot_module, "ask", spy)
+    context = ConversationContext()
+    context.set_chat(777, Dialog(id=5, name="Crypto", kind="channel"))
+    context.append_turn(777, ["q", "a"])
+    event = FakeEvent(sender_id=777, text="/clear")
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=context, allowed_user_id=777)
+
+    spy.assert_not_awaited()  # a command is not a question
+    assert context.get_chat(777) is None
+    assert context.turn_count(777) == 0
+    event.reply.assert_awaited_once()  # a confirmation is sent
+
+
+async def test_status_command_reports_chat_and_memory(monkeypatch):
+    spy = AsyncMock(return_value="should not run")
+    monkeypatch.setattr(bot_module, "ask", spy)
+    context = ConversationContext()
+    context.set_chat(777, Dialog(id=5, name="Crypto", kind="channel"))
+    context.append_turn(777, ["q", "a"])
+    event = FakeEvent(sender_id=777, text="/status")
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=context, allowed_user_id=777)
+
+    spy.assert_not_awaited()
+    (sent,), _ = event.reply.call_args
+    assert "Crypto" in sent  # the active chat name
+    assert "1" in sent  # one turn in memory
+
+
+async def test_status_command_when_empty(monkeypatch):
+    monkeypatch.setattr(bot_module, "ask", AsyncMock())
+    context = ConversationContext()
+    event = FakeEvent(sender_id=777, text="/status")
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=context, allowed_user_id=777)
+
+    event.reply.assert_awaited_once()  # still replies, even with nothing stored
+
+
+async def test_command_is_case_insensitive_and_ignores_bot_suffix(monkeypatch):
+    monkeypatch.setattr(bot_module, "ask", AsyncMock())
+    context = ConversationContext()
+    context.append_turn(777, ["q", "a"])
+    event = FakeEvent(sender_id=777, text="/Clear@YouGramBot")
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=context, allowed_user_id=777)
+
+    assert context.turn_count(777) == 0  # matched despite case + @suffix
+
+
 async def test_forward_inaccessible_chat_replies_with_error(monkeypatch):
     monkeypatch.setattr(bot_module, "ask", AsyncMock())
     context = ConversationContext()

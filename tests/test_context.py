@@ -1,4 +1,4 @@
-from yougram.context import ConversationContext
+from yougram.context import HISTORY_TURNS, ConversationContext
 from yougram.models import Dialog
 
 
@@ -61,3 +61,23 @@ def test_empty_turn_is_ignored():
     ctx = ConversationContext()
     ctx.append_turn(1, [])  # trimming produced nothing — don't store an empty turn
     assert ctx.get_history(1) == []
+
+
+def test_turn_count_starts_at_zero():
+    ctx = ConversationContext()
+    assert ctx.turn_count(777) == 0
+
+
+def test_turn_count_counts_turns_not_messages():
+    ctx = ConversationContext()
+    ctx.append_turn(1, ["q1", "a1"])  # one turn = two messages
+    assert ctx.turn_count(1) == 1
+    ctx.append_turn(1, ["q2", "a2"])
+    assert ctx.turn_count(1) == 2
+
+
+def test_turn_count_caps_at_history_turns():
+    ctx = ConversationContext()
+    for i in range(5):
+        ctx.append_turn(1, [f"q{i}", f"a{i}"])  # evicts older than HISTORY_TURNS
+    assert ctx.turn_count(1) == HISTORY_TURNS

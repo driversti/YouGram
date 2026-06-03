@@ -37,6 +37,10 @@ class ConversationContext:
         """Flatten the stored turns into one message list for `message_history`."""
         return [msg for turn in self._history.get(user_id, []) for msg in turn]
 
+    def turn_count(self, user_id: int) -> int:
+        """How many turns are currently kept for this user (0..HISTORY_TURNS)."""
+        return len(self._history.get(user_id, []))
+
     def clear(self, user_id: int) -> None:
         self._chats.pop(user_id, None)
         self._history.pop(user_id, None)
