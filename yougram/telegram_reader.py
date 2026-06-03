@@ -6,6 +6,14 @@ from telethon.tl.functions.messages import GetDialogFiltersRequest
 from .models import Dialog, Folder, Message
 
 
+class ChatNotResolved(Exception):
+    """Raised when a chat reference can't be resolved to a Telegram entity."""
+
+    def __init__(self, chat):
+        self.chat = chat
+        super().__init__(f"Could not resolve chat: {chat!r}")
+
+
 class TelegramReader:
     """Read-only wrapper over a Telethon user-client.
 
@@ -20,25 +28,30 @@ class TelegramReader:
 
     async def fetch_messages(self, chat, since: datetime | None = None, limit: int = 100) -> list[Message]:
         since = self._as_aware(since)
+        entity = await self._resolve_entity(chat)
         out: list[Message] = []
-        async for m in self._client.iter_messages(self._entity_ref(chat), limit=limit):
+        async for m in self._client.iter_messages(entity, limit=limit):
             if since is not None and m.date < since:
                 break  # iter_messages yields newest-first; older than `since` -> done
             if not m.message:
                 continue  # skip service/empty messages
-            out.append(self._to_message(m))
+            out.append(self._to_message(m, entity))
         return out
 
     async def search_messages(self, query: str, chats, since: datetime | None = None, limit: int = 50) -> list[Message]:
         since = self._as_aware(since)
         out: list[Message] = []
         for chat in chats:
-            async for m in self._client.iter_messages(self._entity_ref(chat), search=query, limit=limit):
+            try:
+                entity = await self._resolve_entity(chat)
+            except ChatNotResolved:
+                continue  # skip chats we can't resolve; keep searching the rest
+            async for m in self._client.iter_messages(entity, search=query, limit=limit):
                 if since is not None and m.date < since:
                     break
                 if not m.message:
                     continue
-                out.append(self._to_message(m))
+                out.append(self._to_message(m, entity))
         return out
 
     async def list_dialogs(self, query: str, limit: int = 20) -> list[Dialog]:
@@ -84,6 +97,14 @@ class TelegramReader:
                 continue
             out.append(self._entity_to_dialog(entity))
         return out
+
+    async def _resolve_entity(self, chat):
+        try:
+            return await self._client.get_entity(self._entity_ref(chat))
+        except ChatNotResolved:
+            raise  # guard: a custom client wrapper may already raise this — don't double-wrap
+        except Exception as exc:  # noqa: BLE001 — any Telethon resolution failure (RPCError, ValueError, ...)
+            raise ChatNotResolved(chat) from exc
 
     async def _fetch_filters(self) -> list:
         result = await self._client(GetDialogFiltersRequest())
@@ -175,8 +196,33 @@ class TelegramReader:
         return "user"
 
     @staticmethod
-    def _to_message(m) -> Message:
+    def _message_link(entity, message_id) -> str | None:
+        """Build a t.me permalink for a message in `entity`.
+
+        Public channel (has @username) -> https://t.me/<username>/<id>.
+        Private channel/supergroup -> https://t.me/c/<internal_id>/<id>.
+        Otherwise (no username, not a channel) there is no public link.
+        """
+        if entity is None:
+            return None
+        username = getattr(entity, "username", None)
+        if username:
+            return f"https://t.me/{username}/{message_id}"
+        cid = getattr(entity, "id", None)
+        is_channel = getattr(entity, "broadcast", False) or getattr(entity, "megagroup", False)
+        if cid and is_channel:
+            return f"https://t.me/c/{cid}/{message_id}"
+        return None
+
+    @staticmethod
+    def _to_message(m, entity=None) -> Message:
         sender = None
         if m.sender is not None:
             sender = getattr(m.sender, "username", None) or getattr(m.sender, "first_name", None)
-        return Message(id=m.id, date=m.date, sender=sender, text=m.message)
+        return Message(
+            id=m.id,
+            date=m.date,
+            sender=sender,
+            text=m.message,
+            link=TelegramReader._message_link(entity, m.id),
+        )

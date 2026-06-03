@@ -11,6 +11,7 @@ class Message(BaseModel):
     date: datetime
     sender: str | None
     text: str
+    link: str | None = None
 
 
 class Dialog(BaseModel):

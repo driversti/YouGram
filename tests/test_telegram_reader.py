@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from yougram.telegram_reader import TelegramReader
+import pytest
+
+from yougram.telegram_reader import ChatNotResolved, TelegramReader
 
 
 def _msg(id, text, when, username=None):
@@ -16,12 +18,14 @@ def _dialog(id, name, *, channel=False, group=False):
 class FakeClient:
     """Mimics the subset of Telethon's async API that TelegramReader uses."""
 
-    def __init__(self, *, messages=None, dialogs=None, filters=None, entities=None):
+    def __init__(self, *, messages=None, dialogs=None, filters=None, entities=None, failing=None):
         self._messages = messages or []
         self._dialogs = dialogs or []
         self._filters = filters or []
         self._entities = entities or {}
+        self._failing = set(failing or [])
         self.seen_chats = []
+        self.resolved = []
 
     def iter_messages(self, chat, limit=None, search=None):
         self.seen_chats.append(chat)
@@ -43,11 +47,20 @@ class FakeClient:
         return gen()
 
     async def __call__(self, request):
-        # Stands in for messages.GetDialogFiltersRequest().
         return SimpleNamespace(filters=self._filters)
 
     async def get_entity(self, peer):
-        return self._entities[peer]
+        self.resolved.append(peer)
+        if peer in self._failing:
+            raise ValueError(f"Cannot resolve {peer!r}")
+        if peer in self._entities:
+            return self._entities[peer]
+        # Default: a generic accessible channel (no username) so message-reading
+        # tests that don't care about links still resolve.
+        return SimpleNamespace(
+            id=peer if isinstance(peer, int) else 0,
+            title=None, username=None, broadcast=True, megagroup=False,
+        )
 
 
 async def test_fetch_messages_maps_and_skips_empty():
@@ -239,7 +252,8 @@ async def test_chats_in_folder_skips_inaccessible_peers():
     # A folder may include a channel the account can't open; skip it, keep the rest.
     client = FakeClient(
         filters=[_folder(1, "AI", include_peers=["ok", "bad"])],
-        entities={"ok": _channel_entity(10, "AI News", broadcast=True)},  # "bad" -> KeyError
+        entities={"ok": _channel_entity(10, "AI News", broadcast=True)},
+        failing={"bad"},
     )
     reader = TelegramReader(client)
 
@@ -254,4 +268,99 @@ async def test_search_messages_routes_numeric_ref_to_int():
 
     await reader.search_messages("q", ["555"], limit=5)
 
-    assert 555 in client.seen_chats  # "555" was converted to int via _entity_ref
+    assert 555 in client.resolved  # "555" -> int 555 passed to get_entity via _entity_ref
+
+
+def test_message_link_public_uses_username():
+    e = SimpleNamespace(username="news", broadcast=True, megagroup=False, id=10)
+    assert TelegramReader._message_link(e, 55) == "https://t.me/news/55"
+
+
+def test_message_link_private_channel_uses_c_id():
+    e = SimpleNamespace(username=None, broadcast=True, megagroup=False, id=777)
+    assert TelegramReader._message_link(e, 7) == "https://t.me/c/777/7"
+
+
+def test_message_link_none_when_no_username_and_not_channel():
+    e = SimpleNamespace(username=None, broadcast=False, megagroup=False, id=5)
+    assert TelegramReader._message_link(e, 1) is None
+
+
+def test_message_link_none_for_none_entity():
+    assert TelegramReader._message_link(None, 1) is None
+
+
+async def test_fetch_messages_populates_public_link():
+    now = datetime(2026, 6, 2, 12, tzinfo=timezone.utc)
+    client = FakeClient(
+        messages=[_msg(42, "hi", now, username="bob")],
+        entities={"@pub": SimpleNamespace(id=10, username="pub", broadcast=True, megagroup=False, title=None)},
+    )
+    reader = TelegramReader(client)
+
+    out = await reader.fetch_messages("@pub", limit=10)
+
+    assert out[0].link == "https://t.me/pub/42"
+
+
+async def test_fetch_messages_populates_private_channel_link():
+    now = datetime(2026, 6, 2, 12, tzinfo=timezone.utc)
+    client = FakeClient(
+        messages=[_msg(7, "hi", now)],
+        entities={777: SimpleNamespace(id=777, username=None, broadcast=True, megagroup=False, title="Priv")},
+    )
+    reader = TelegramReader(client)
+
+    out = await reader.fetch_messages(777, limit=10)
+
+    assert out[0].link == "https://t.me/c/777/7"
+
+
+async def test_fetch_messages_raises_when_chat_unresolvable():
+    client = FakeClient(messages=[], failing={"ghost"})
+    reader = TelegramReader(client)
+
+    with pytest.raises(ChatNotResolved):
+        await reader.fetch_messages("ghost")
+
+
+async def test_search_messages_skips_unresolved_chats():
+    now = datetime(2026, 6, 2, tzinfo=timezone.utc)
+    client = FakeClient(
+        messages=[_msg(1, "alpha", now)],
+        entities={"@ok": SimpleNamespace(id=1, username="ok", broadcast=True, megagroup=False, title=None)},
+        failing={"@bad"},
+    )
+    reader = TelegramReader(client)
+
+    out = await reader.search_messages("alpha", ["@bad", "@ok"], limit=10)
+
+    # "@bad" is skipped; only "@ok"'s message comes back.
+    assert [m.id for m in out] == [1]
+
+
+async def test_search_messages_populates_link():
+    now = datetime(2026, 6, 2, tzinfo=timezone.utc)
+    client = FakeClient(
+        messages=[_msg(5, "alpha", now)],
+        entities={"@chan": SimpleNamespace(id=99, username="chan", broadcast=True, megagroup=False, title=None)},
+    )
+    reader = TelegramReader(client)
+
+    out = await reader.search_messages("alpha", ["@chan"], limit=10)
+
+    assert out[0].link == "https://t.me/chan/5"
+
+
+async def test_fetch_messages_wraps_non_valueerror_resolution_failure():
+    class RpcLikeError(Exception):
+        pass
+
+    class FailingClient(FakeClient):
+        async def get_entity(self, peer):
+            raise RpcLikeError("CHANNEL_PRIVATE")
+
+    reader = TelegramReader(FailingClient(messages=[]))
+
+    with pytest.raises(ChatNotResolved):
+        await reader.fetch_messages("some_channel")

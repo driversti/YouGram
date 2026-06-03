@@ -76,3 +76,16 @@ async def test_chats_in_folder_tool_delegates():
     out = await chats_in_folder(_ctx(reader), name="ai")
     assert out[0].name == "AI News"
     assert reader.calls == [("chats_in_folder", "ai", 50)]
+
+
+async def test_fetch_messages_tool_reports_unresolved_chat():
+    from yougram.telegram_reader import ChatNotResolved
+
+    class FailReader:
+        async def fetch_messages(self, chat, since=None, limit=100):
+            raise ChatNotResolved(chat)
+
+    out = await fetch_messages(_ctx(FailReader()), chat="ghost")
+
+    assert isinstance(out, str)
+    assert "ghost" in out

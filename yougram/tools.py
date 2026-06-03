@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic_ai import RunContext
 
 from .models import Dialog, Folder, Message
-from .telegram_reader import TelegramReader
+from .telegram_reader import ChatNotResolved, TelegramReader
 
 
 @dataclass
@@ -28,13 +28,21 @@ async def fetch_messages(
     chat: str,
     since: datetime | None = None,
     limit: int = 100,
-) -> list[Message]:
+) -> list[Message] | str:
     """Fetch recent messages from a single chat (newest first).
 
     `chat` is a chat title, @username, or numeric id. Pass `since` (UTC) to stop
-    at messages older than that time, e.g. for "today".
+    at messages older than that time, e.g. for "today". Each message includes a
+    `link` you can show the user. If the chat can't be resolved, returns a short
+    explanation string instead of raising.
     """
-    return await ctx.deps.reader.fetch_messages(chat, since=since, limit=limit)
+    try:
+        return await ctx.deps.reader.fetch_messages(chat, since=since, limit=limit)
+    except ChatNotResolved:
+        return (
+            f"Could not find a chat matching '{chat}'. Resolve it first with "
+            f"list_dialogs/chats_in_folder, or ask the user to name a folder or channel."
+        )
 
 
 async def search_messages(
