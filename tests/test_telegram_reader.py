@@ -11,8 +11,10 @@ def _msg(id, text, when, username=None):
     return SimpleNamespace(id=id, message=text, date=when, sender=sender)
 
 
-def _dialog(id, name, *, channel=False, group=False):
-    return SimpleNamespace(id=id, name=name, is_channel=channel, is_group=group)
+def _dialog(id, name, *, channel=False, group=False, username=None):
+    # Telethon exposes the chat's @username via dialog.entity.username.
+    return SimpleNamespace(id=id, name=name, is_channel=channel, is_group=group,
+                           entity=SimpleNamespace(username=username))
 
 
 class FakeClient:
@@ -173,6 +175,30 @@ async def test_list_dialogs_fuzzy_matches_typo():
     reader = TelegramReader(client)
 
     out = await reader.list_dialogs("newz")  # typo for "news"
+
+    assert [d.id for d in out] == [1]
+
+
+async def test_list_dialogs_matches_by_username_when_display_name_differs():
+    client = FakeClient(dialogs=[
+        # Display name shares no letters with the username — only the username matches.
+        _dialog(1, "Мама ❤️", username="yulkitka"),
+        _dialog(2, "Work Group", group=True),
+    ])
+    reader = TelegramReader(client)
+
+    out = await reader.list_dialogs("yulkitka")
+
+    assert [d.id for d in out] == [1]
+
+
+async def test_list_dialogs_tolerates_leading_at_in_username_query():
+    client = FakeClient(dialogs=[
+        _dialog(1, "Мама ❤️", username="yulkitka"),
+    ])
+    reader = TelegramReader(client)
+
+    out = await reader.list_dialogs("@yulkitka")  # the leading @ is stripped
 
     assert [d.id for d in out] == [1]
 

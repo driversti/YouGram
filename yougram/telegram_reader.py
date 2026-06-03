@@ -55,11 +55,14 @@ class TelegramReader:
         return out
 
     async def list_dialogs(self, query: str, limit: int = 20) -> list[Dialog]:
-        needle = query.casefold()
+        needle = query.casefold().lstrip("@")  # tolerate a typed "@username"
         scored: list[tuple[float, Dialog]] = []
         async for d in self._client.iter_dialogs():
             name = d.name or ""
-            score = self._match_score(needle, name)
+            username = getattr(getattr(d, "entity", None), "username", None) or ""
+            # Match either the display name or the @username — a contact's handle
+            # often differs from the name Telegram shows.
+            score = max(self._match_score(needle, name), self._match_score(needle, username))
             if score > 0:
                 scored.append((score, Dialog(id=d.id, name=name, kind=self._kind(d))))
         # Stable sort: equal-scored (e.g. all substring) keep their original order.
