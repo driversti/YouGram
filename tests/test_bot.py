@@ -75,7 +75,19 @@ async def test_answers_whitelisted_user(monkeypatch):
                           context=ConversationContext(), allowed_user_id=777)
 
     spy.assert_awaited_once()
-    event.reply.assert_awaited_once_with("here is your answer")
+    event.reply.assert_awaited_once_with("here is your answer", link_preview=False)
+
+
+async def test_answer_replies_disable_link_preview(monkeypatch):
+    # Post links in answers must not expand into big preview cards.
+    spy = AsyncMock(return_value="see https://t.me/chan/42")
+    monkeypatch.setattr(bot_module, "ask", spy)
+    event = FakeEvent(sender_id=777, text="link?")
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=ConversationContext(), allowed_user_id=777)
+
+    assert event.reply.await_args.kwargs["link_preview"] is False
 
 
 async def test_long_answer_is_split_into_multiple_replies(monkeypatch):

@@ -34,7 +34,8 @@ async def handle_question(event, agent, reader, context, allowed_user_id: int) -
         await event.reply(f"⚠️ Error: {exc}")
         return
     for chunk in split_message(answer):  # Telegram caps a message at 4096 chars
-        await event.reply(chunk)
+        # link_preview=False: post links shouldn't expand into big preview cards.
+        await event.reply(chunk, link_preview=False)
 
 
 async def _handle_forward(event, reader, context, allowed_user_id, source) -> None:
