@@ -2,7 +2,15 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from pydantic_ai import Agent, Tool
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UserPromptPart,
+)
 
+from .context import ConversationContext
 from .telegram_reader import TelegramReader
 from .tools import Deps, chats_in_folder, fetch_messages, list_dialogs, list_folders, search_messages
 
@@ -65,7 +73,10 @@ def build_agent(model: str, tz: str = "UTC") -> Agent[Deps, str]:
     agent = Agent(
         model,
         deps_type=Deps,
-        system_prompt=SYSTEM_PROMPT,
+        # `instructions`, not `system_prompt`: Pydantic AI omits system prompts
+        # when message_history is supplied (follow-up turns) but always re-applies
+        # instructions, so the rules below and the dynamic time-context survive.
+        instructions=SYSTEM_PROMPT,
         tools=[
             Tool(list_dialogs, takes_ctx=True),
             Tool(list_folders, takes_ctx=True),
@@ -76,15 +87,59 @@ def build_agent(model: str, tz: str = "UTC") -> Agent[Deps, str]:
         defer_model_check=True,
     )
 
-    # Dynamic prompt: re-evaluated on every run so 'now' is always current.
-    @agent.system_prompt
+    # Dynamic instruction: re-evaluated on every run so 'now' is always current.
+    @agent.instructions
     def _time_context() -> str:
         return current_time_context(tz)
 
     return agent
 
 
-async def ask(agent: Agent[Deps, str], reader: TelegramReader, question: str) -> str:
-    """Run one question through the agent and return its text answer."""
-    result = await agent.run(question, deps=Deps(reader=reader))
+def trim_messages(messages: list[ModelMessage]) -> list[ModelMessage]:
+    """Collapse one run's messages into a single user→assistant text pair.
+
+    Drops tool calls/returns and system prompts (the token-heavy parts we don't
+    want in stored history) and merges all text into one response, so the result
+    is a valid alternating sequence with no adjacent same-role messages.
+    """
+    user_parts = []
+    text_parts = []
+    for m in messages:
+        if isinstance(m, ModelRequest):
+            user_parts += [p for p in m.parts if isinstance(p, UserPromptPart)]
+        elif isinstance(m, ModelResponse):
+            text_parts += [p for p in m.parts if isinstance(p, TextPart)]
+    if not user_parts:
+        return []  # never store a response without its user turn — that's an
+        # invalid history (providers require it to start with a user message)
+    out: list[ModelMessage] = [ModelRequest(parts=user_parts)]
+    if text_parts:
+        out.append(ModelResponse(parts=text_parts))
+    return out
+
+
+async def ask(
+    agent: Agent[Deps, str],
+    reader: TelegramReader,
+    question: str,
+    *,
+    context: "ConversationContext | None" = None,
+    user_id: int | None = None,
+) -> str:
+    """Run one question through the agent and return its text answer.
+
+    When `context` and `user_id` are given, the last turns are replayed as
+    `message_history` and this turn is stored back (trimmed) so follow-ups keep
+    context. Without them, `ask` is stateless (used by tests and one-off calls).
+    """
+    history = None
+    if context is not None and user_id is not None:
+        history = context.get_history(user_id) or None
+
+    deps = Deps(reader=reader, context=context, user_id=user_id)
+    result = await agent.run(question, deps=deps, message_history=history)
+
+    if context is not None and user_id is not None:
+        context.append_turn(user_id, trim_messages(result.new_messages()))
+
     return result.output

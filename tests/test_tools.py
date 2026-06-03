@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from yougram.context import ConversationContext
 from yougram.models import Dialog, Folder, Message
 from yougram.tools import Deps, chats_in_folder, fetch_messages, list_dialogs, list_folders, search_messages
 
@@ -34,11 +35,14 @@ class FakeReader:
         self.calls.append(("chats_in_folder", name, limit))
         return [Dialog(id=9, name="AI News", kind="channel")]
 
+    async def resolve_chat(self, ref):
+        self.calls.append(("resolve_chat", ref))
+        return Dialog(id=42, name=f"resolved:{ref}", kind="channel")
 
-def _ctx(reader):
-    # Tools only read ctx.deps, so a minimal stand-in is enough.
+
+def _ctx(reader, context=None, user_id=None):
     class Ctx:
-        deps = Deps(reader=reader)
+        deps = Deps(reader=reader, context=context, user_id=user_id)
 
     return Ctx()
 
@@ -89,3 +93,46 @@ async def test_fetch_messages_tool_reports_unresolved_chat():
 
     assert isinstance(out, str)
     assert "ghost" in out
+
+
+async def test_fetch_messages_sets_active_chat_on_success():
+    reader = FakeReader()
+    context = ConversationContext()
+    await fetch_messages(_ctx(reader, context, user_id=7), chat="News")
+    active = context.get_chat(7)
+    assert active is not None
+    assert active.name == "resolved:News"
+
+
+async def test_fetch_messages_without_context_does_not_crash():
+    reader = FakeReader()
+    out = await fetch_messages(_ctx(reader), chat="News")  # no context/user_id
+    assert out[0].text == "hi"
+
+
+async def test_fetch_messages_unresolved_does_not_set_active_chat():
+    from yougram.telegram_reader import ChatNotResolved
+
+    class FailReader:
+        async def fetch_messages(self, chat, since=None, limit=100):
+            raise ChatNotResolved(chat)
+
+    context = ConversationContext()
+    out = await fetch_messages(_ctx(FailReader(), context, user_id=7), chat="ghost")
+    assert isinstance(out, str)
+    assert context.get_chat(7) is None
+
+
+async def test_search_messages_sets_active_chat_for_single_chat():
+    reader = FakeReader()
+    context = ConversationContext()
+    await search_messages(_ctx(reader, context, user_id=7), query="x", chats=["Solo"])
+    assert context.get_chat(7).name == "resolved:Solo"
+
+
+async def test_search_messages_multi_chat_does_not_set_active_chat():
+    reader = FakeReader()
+    context = ConversationContext()
+    await search_messages(_ctx(reader, context, user_id=7),
+                          query="x", chats=["A", "B"])
+    assert context.get_chat(7) is None

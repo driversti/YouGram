@@ -3,15 +3,39 @@ from datetime import datetime
 
 from pydantic_ai import RunContext
 
+from .context import ConversationContext
 from .models import Dialog, Folder, Message
 from .telegram_reader import ChatNotResolved, TelegramReader
 
 
 @dataclass
 class Deps:
-    """Dependencies injected into every tool call for one agent run."""
+    """Dependencies injected into every tool call for one agent run.
+
+    `context` + `user_id` let the read tools record the active chat (the single
+    chat they just resolved) so follow-up questions like "his last post" work.
+    Both are optional so `ask`/tests can run without conversation memory.
+    """
 
     reader: TelegramReader
+    context: ConversationContext | None = None
+    user_id: int | None = None
+
+
+async def _remember_chat(ctx: RunContext[Deps], chat: str) -> None:
+    """Record `chat` as the active chat, if memory is available and it resolves.
+
+    Telethon already cached the entity during the read, so this resolve is cheap.
+    Any failure is ignored — remembering the chat is best-effort.
+    """
+    deps = ctx.deps
+    if deps.context is None or deps.user_id is None:
+        return
+    try:
+        dialog = await deps.reader.resolve_chat(chat)
+    except Exception:  # noqa: BLE001 — best-effort; never break the read on this
+        return
+    deps.context.set_chat(deps.user_id, dialog)
 
 
 async def list_dialogs(ctx: RunContext[Deps], query: str) -> list[Dialog]:
@@ -37,12 +61,14 @@ async def fetch_messages(
     explanation string instead of raising.
     """
     try:
-        return await ctx.deps.reader.fetch_messages(chat, since=since, limit=limit)
+        messages = await ctx.deps.reader.fetch_messages(chat, since=since, limit=limit)
     except ChatNotResolved:
         return (
             f"Could not find a chat matching '{chat}'. Resolve it first with "
             f"list_dialogs/chats_in_folder, or ask the user to name a folder or channel."
         )
+    await _remember_chat(ctx, chat)  # single chat resolved -> make it the active chat
+    return messages
 
 
 async def search_messages(
@@ -56,7 +82,10 @@ async def search_messages(
 
     Use to answer "did anyone mention X" across several channels/groups.
     """
-    return await ctx.deps.reader.search_messages(query, chats, since=since, limit=limit)
+    results = await ctx.deps.reader.search_messages(query, chats, since=since, limit=limit)
+    if len(chats) == 1:  # only an unambiguous single-chat search sets context
+        await _remember_chat(ctx, chats[0])
+    return results
 
 
 async def list_folders(ctx: RunContext[Deps]) -> list[Folder]:

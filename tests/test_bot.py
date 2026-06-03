@@ -98,6 +98,21 @@ async def test_question_injects_current_chat_context(monkeypatch):
     assert "what's new over 3 days?" in question
 
 
+async def test_ask_receives_context_and_user_id(monkeypatch):
+    spy = AsyncMock(return_value="ok")
+    monkeypatch.setattr(bot_module, "ask", spy)
+    context = ConversationContext()
+    event = FakeEvent(sender_id=777, text="hello")
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=context, allowed_user_id=777)
+
+    spy.assert_awaited_once()
+    _, kwargs = spy.call_args
+    assert kwargs["context"] is context
+    assert kwargs["user_id"] == 777
+
+
 async def test_forward_inaccessible_chat_replies_with_error(monkeypatch):
     monkeypatch.setattr(bot_module, "ask", AsyncMock())
     context = ConversationContext()
