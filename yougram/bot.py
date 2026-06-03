@@ -25,8 +25,11 @@ async def handle_question(event, agent, reader, context, allowed_user_id: int) -
         )
 
     try:
-        answer = await ask(agent, reader, question,
-                           context=context, user_id=allowed_user_id)
+        # Show "typing…" while the model works; Telethon auto-repeats it until
+        # the block exits, so the owner can see the bot is busy.
+        async with event.client.action(event.chat_id, "typing"):
+            answer = await ask(agent, reader, question,
+                               context=context, user_id=allowed_user_id)
     except Exception as exc:  # noqa: BLE001 — surface any failure to the owner
         await event.reply(f"⚠️ Error: {exc}")
         return

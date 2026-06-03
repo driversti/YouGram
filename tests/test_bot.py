@@ -7,12 +7,38 @@ from yougram.context import ConversationContext
 from yougram.models import Dialog
 
 
+class FakeAction:
+    """Async context manager standing in for Telethon's client.action(...)."""
+
+    def __init__(self, log, chat_id, kind):
+        self.log, self.chat_id, self.kind = log, chat_id, kind
+
+    async def __aenter__(self):
+        self.log.append(("typing_on", self.chat_id, self.kind))
+        return self
+
+    async def __aexit__(self, *exc):
+        self.log.append(("typing_off",))
+        return False
+
+
+class FakeClient:
+    def __init__(self, log):
+        self._log = log
+
+    def action(self, chat_id, kind):
+        return FakeAction(self._log, chat_id, kind)
+
+
 class FakeEvent:
-    def __init__(self, sender_id, text, message=None):
+    def __init__(self, sender_id, text, message=None, chat_id=555):
         self.sender_id = sender_id
         self.raw_text = text
         self.message = message  # None => not a forward
+        self.chat_id = chat_id
         self.reply = AsyncMock()
+        self.action_log = []
+        self.client = FakeClient(self.action_log)
 
 
 class FakeReader:
@@ -64,6 +90,23 @@ async def test_long_answer_is_split_into_multiple_replies(monkeypatch):
     assert event.reply.await_count > 1  # split across several messages
     sent = [call.args[0] for call in event.reply.await_args_list]
     assert all(len(s) <= 4000 for s in sent)  # every part fits Telegram's limit
+
+
+async def test_shows_typing_indicator_while_working(monkeypatch):
+    event = FakeEvent(sender_id=777, text="hi")
+
+    async def fake_ask(*args, **kwargs):
+        event.action_log.append(("asked",))  # records WHEN ask runs
+        return "done"
+
+    monkeypatch.setattr(bot_module, "ask", fake_ask)
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=ConversationContext(), allowed_user_id=777)
+
+    # Typing turns on before ask, ask runs, typing turns off after.
+    assert [e[0] for e in event.action_log] == ["typing_on", "asked", "typing_off"]
+    assert event.action_log[0] == ("typing_on", event.chat_id, "typing")
 
 
 async def test_replies_with_error_when_ask_fails(monkeypatch):
