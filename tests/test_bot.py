@@ -52,6 +52,20 @@ async def test_answers_whitelisted_user(monkeypatch):
     event.reply.assert_awaited_once_with("here is your answer")
 
 
+async def test_long_answer_is_split_into_multiple_replies(monkeypatch):
+    long_answer = "\n".join("word " * 200 for _ in range(20))  # well over 4096
+    spy = AsyncMock(return_value=long_answer)
+    monkeypatch.setattr(bot_module, "ask", spy)
+    event = FakeEvent(sender_id=777, text="tell me everything")
+
+    await handle_question(event, agent=object(), reader=FakeReader(),
+                          context=ConversationContext(), allowed_user_id=777)
+
+    assert event.reply.await_count > 1  # split across several messages
+    sent = [call.args[0] for call in event.reply.await_args_list]
+    assert all(len(s) <= 4000 for s in sent)  # every part fits Telegram's limit
+
+
 async def test_replies_with_error_when_ask_fails(monkeypatch):
     spy = AsyncMock(side_effect=RuntimeError("boom"))
     monkeypatch.setattr(bot_module, "ask", spy)

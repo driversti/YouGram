@@ -1,6 +1,7 @@
 from telethon import events
 
 from .agent import ask
+from .chunking import split_message
 from .forwards import extract_forward_source
 
 
@@ -29,7 +30,8 @@ async def handle_question(event, agent, reader, context, allowed_user_id: int) -
     except Exception as exc:  # noqa: BLE001 — surface any failure to the owner
         await event.reply(f"⚠️ Error: {exc}")
         return
-    await event.reply(answer)
+    for chunk in split_message(answer):  # Telegram caps a message at 4096 chars
+        await event.reply(chunk)
 
 
 async def _handle_forward(event, reader, context, allowed_user_id, source) -> None:
