@@ -32,12 +32,14 @@ def test_history_append_and_get():
     assert ctx.get_history(1) == ["q1", "a1", "q2", "a2"]
 
 
-def test_history_keeps_only_last_two_turns():
+def test_history_evicts_oldest_beyond_the_limit():
     ctx = ConversationContext()
-    ctx.append_turn(1, ["q1", "a1"])
-    ctx.append_turn(1, ["q2", "a2"])
-    ctx.append_turn(1, ["q3", "a3"])  # third turn evicts the first
-    assert ctx.get_history(1) == ["q2", "a2", "q3", "a3"]
+    for i in range(HISTORY_TURNS + 1):  # one more turn than we keep
+        ctx.append_turn(1, [f"q{i}", f"a{i}"])
+    history = ctx.get_history(1)
+    assert "q0" not in history  # the oldest turn was evicted
+    assert history[0] == "q1"  # now the oldest kept
+    assert len(history) == HISTORY_TURNS * 2  # two messages per kept turn
 
 
 def test_history_is_per_user():
@@ -78,6 +80,6 @@ def test_turn_count_counts_turns_not_messages():
 
 def test_turn_count_caps_at_history_turns():
     ctx = ConversationContext()
-    for i in range(5):
+    for i in range(HISTORY_TURNS + 3):  # well over the limit
         ctx.append_turn(1, [f"q{i}", f"a{i}"])  # evicts older than HISTORY_TURNS
     assert ctx.turn_count(1) == HISTORY_TURNS

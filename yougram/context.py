@@ -2,8 +2,9 @@ from .models import Dialog
 
 # How many recent turns to keep per user. A "turn" is one user question plus
 # the assistant's answer (collapsed to a user→assistant message pair before it
-# is stored, so no tool-result dumps are kept).
-HISTORY_TURNS = 2
+# is stored, so no tool-result dumps are kept). All kept turns are replayed as
+# message_history on every request, so this trades follow-up memory for tokens.
+HISTORY_TURNS = 10
 
 
 class ConversationContext:

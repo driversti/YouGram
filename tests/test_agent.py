@@ -4,7 +4,7 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserProm
 from pydantic_ai.models.test import TestModel
 
 from yougram.agent import ask, build_agent, current_time_context, trim_messages
-from yougram.context import ConversationContext
+from yougram.context import HISTORY_TURNS, ConversationContext
 from yougram.models import Message
 from yougram.tools import Deps
 
@@ -151,15 +151,15 @@ async def test_ask_stores_trimmed_history_without_tool_dumps():
     assert "SystemPromptPart" not in kinds
 
 
-async def test_ask_caps_history_at_two_turns():
+async def test_ask_caps_history_at_history_turns():
     agent = build_agent("anthropic:claude-haiku-4-5")
     reader = FakeReader()
     context = ConversationContext()
     with agent.override(model=TestModel()):
-        for i in range(3):
+        for i in range(HISTORY_TURNS + 1):  # one more turn than we keep
             await ask(agent, reader, f"q{i}", context=context, user_id=7)
-    # 2 turns * 2 messages each.
-    assert len(context.get_history(7)) == 4
+    # capped at HISTORY_TURNS turns * 2 messages each.
+    assert len(context.get_history(7)) == HISTORY_TURNS * 2
 
 
 async def test_ask_without_context_is_backward_compatible():
