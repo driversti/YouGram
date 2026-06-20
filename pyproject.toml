@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "telethon>=1.36",
     "pydantic>=2.7",
-    "pydantic-settings>=2.3",
+    "pydantic-settings>=2.14.2",
     "pydantic-ai>=1.0",
     "python-dotenv>=1.0",
     "tzdata>=2024.1",
